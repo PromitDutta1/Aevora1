@@ -37,8 +37,30 @@
 
     <main class="w-full max-w-4xl bg-white card-shadow rounded-xl p-4 sm:p-8">
         
-        <!-- --- Main Application Content (Visible by default) --- -->
-        <div id="main-content">
+        <!-- --- API Key Setup Section --- -->
+        <section id="api-key-setup" class="mb-8 p-6 bg-yellow-50 border border-yellow-300 rounded-lg shadow-inner">
+            <h3 class="text-xl font-bold text-yellow-800 mb-3">Authentication Required</h3>
+            <p class="text-sm text-yellow-700 mb-4">
+                This key is only stored securely in your browser's local storage for future visits.
+            </p>
+            <div class="flex flex-col sm:flex-row gap-3">
+                <input
+                    id="api-key-input"
+                    type="password"
+                    placeholder="Enter your Gemini API Key here (e.g., AIza...)"
+                    class="flex-grow p-3 border border-yellow-400 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                >
+                <button
+                    id="save-key-button"
+                    class="shrink-0 py-3 px-6 bg-yellow-600 text-white font-semibold rounded-lg shadow-md hover:bg-yellow-700 transition duration-200"
+                >
+                    Unlock App
+                </button>
+            </div>
+        </section>
+
+        <!-- --- Main Application Content (Initially Hidden) --- -->
+        <div id="main-content" class="hidden">
             
             <!-- --- Input Section (2-Column Grid) --- -->
             <section id="input-section" class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -153,23 +175,26 @@
 
         let adultFile = null;
         let childFile = null;
+        // Key starts as null; loaded from localStorage or set by user input.
+        let GEMINI_API_KEY = null; 
         
         const MODEL_NAME = 'gemini-2.5-flash-image-preview';
         const BASE_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent`;
-        
-        // --- API Key Hardcoded for GitHub Deployment ---
-        const GEMINI_API_KEY = 'AIzaSyC38JFdr8TnN9fOTof0RrWr100F7AK__9k';
-        // -----------------------------------------------
 
-        // Combined and optimized prompt, now hidden from the user
+        // Combined and optimized prompt, hardcoded
         const HARDCODED_PROMPT = "Create a beautiful, smooth, and aesthetic composition based on the two photos provided. The adult from the recent photo should be tenderly hugging the child from the old photo. The entire background MUST be pure white (#FFFFFF). The style should be photorealistic and artistic. A moment of tender embrace, full of warmth and nostalgia.";
 
         // =================================================================
         // DOM Element Accessors
         // =================================================================
         const DOMElements = {
+            // Key Setup Elements
+            apiKeySetup: document.getElementById('api-key-setup'),
+            apiKeyInput: document.getElementById('api-key-input'),
+            saveKeyButton: document.getElementById('save-key-button'),
             mainContent: document.getElementById('main-content'),
 
+            // Existing App Elements
             adultInput: document.getElementById('adult-photo-upload'),
             childInput: document.getElementById('child-photo-upload'),
             adultLabel: document.getElementById('adult-label'),
@@ -221,11 +246,13 @@
         /**
          * Custom message box replacement for alert().
          * @param {string} msg 
+         * @param {string} [type='error'] - Type for styling (not used for this version, but good practice)
          */
-        const showMessage = (msg) => {
-             console.error("APP MESSAGE:", msg);
+        const showMessage = (msg, type = 'error') => {
+             console.log("APP MESSAGE:", msg);
              DOMElements.messageBox.innerText = msg;
              DOMElements.messageBox.classList.remove('hidden');
+             // Hide message after 5 seconds
              setTimeout(() => DOMElements.messageBox.classList.add('hidden'), 5000);
         };
 
@@ -253,11 +280,22 @@
         // =================================================================
 
         /**
-         * Updates the UI based on the current file state.
+         * Toggles the visibility of the main content based on key presence.
+         * @param {boolean} isUnlocked 
+         */
+        const toggleAppVisibility = (isUnlocked) => {
+            DOMElements.apiKeySetup.classList.toggle('hidden', isUnlocked);
+            DOMElements.mainContent.classList.toggle('hidden', !isUnlocked);
+            if (isUnlocked) {
+                 showMessage('App unlocked! You can now upload photos.', 'success');
+            }
+        };
+
+        /**
+         * Updates the UI based on the current file and key state.
          */
         const updateUI = () => {
-            // The key is now always present (hardcoded), so we only check files
-            const isReady = adultFile && childFile;
+            const isReady = adultFile && childFile && GEMINI_API_KEY;
 
             // Update button state
             DOMElements.generateButton.disabled = !isReady;
@@ -274,8 +312,7 @@
 
         /**
          * Handles file selection changes.
-         * @param {Event} e 
-         * @param {'adult'|'child'} type 
+         * ... (Rest of file change logic is the same)
          */
         const handleFileChange = (e, type) => {
             const file = e.target.files[0];
@@ -293,11 +330,9 @@
 
                 fileStatusEl.textContent = file.name;
                 
-                // Update label style to indicate success
                 labelEl.classList.remove('border-dashed', 'border-indigo-300', 'hover:border-indigo-500', 'bg-indigo-50', 'text-indigo-600');
                 labelEl.classList.add('border-green-400', 'bg-green-50', 'text-green-700');
 
-                // Update preview
                 previewEl.src = URL.createObjectURL(file);
                 previewContainerEl.classList.remove('hidden');
 
@@ -310,12 +345,11 @@
                 
                 fileStatusEl.textContent = 'Click to upload';
 
-                // Reset label style
                 labelEl.classList.remove('border-green-400', 'bg-green-50', 'text-green-700');
                 labelEl.classList.add('border-dashed', 'border-indigo-300', 'hover:border-indigo-500', 'bg-indigo-50', 'text-indigo-600');
 
                 previewContainerEl.classList.add('hidden');
-                previewEl.src = ''; // Clear source
+                previewEl.src = ''; 
             }
 
             updateUI();
@@ -323,22 +357,19 @@
 
         /**
          * Sets the state of the application to loading or ready.
-         * @param {boolean} isLoading 
          */
         const setLoadingState = (isLoading) => {
             DOMElements.loadingOverlay.classList.toggle('hidden', !isLoading);
             DOMElements.buttonLoader.classList.toggle('hidden', !isLoading);
             DOMElements.buttonText.textContent = isLoading ? 'Compositing Timeline...' : 'Create Aevora Image';
-            DOMElements.generateButton.disabled = isLoading || !(adultFile && childFile);
+            DOMElements.generateButton.disabled = isLoading || !(adultFile && childFile && GEMINI_API_KEY);
         };
 
         /**
          * Updates the output container to show the generated image or the initial/error state.
-         * @param {'initial'|'image'|'error'} state 
-         * @param {string} [data] 
+         * ... (Output state logic is the same)
          */
         const setOutputState = (state, data = '') => {
-            // Hide everything first
             DOMElements.initialMessage.classList.add('hidden');
             DOMElements.generatedImage.classList.add('hidden');
             DOMElements.errorMessage.classList.add('hidden');
@@ -367,16 +398,18 @@
          * Implements exponential backoff for retries.
          */
         const generateImage = async (adultBase64, childBase64, adultMimeType, childMimeType) => {
+            if (!GEMINI_API_KEY) {
+                throw new Error("API Key is missing. Please unlock the app first.");
+            }
             
             const userQuery = HARDCODED_PROMPT;
-
             const payload = {
                 contents: [{
                     role: "user",
                     parts: [
                         { text: userQuery },
-                        { inlineData: { mimeType: adultMimeType, data: adultBase64 } }, // Adult photo
-                        { inlineData: { mimeType: childMimeType, data: childBase64 } }  // Child photo
+                        { inlineData: { mimeType: adultMimeType, data: adultBase64 } },
+                        { inlineData: { mimeType: childMimeType, data: childBase64 } }
                     ]
                 }],
                 generationConfig: {
@@ -401,7 +434,7 @@
                         let errorMessage = errorBody.error?.message || `API returned status ${response.status}`;
                         
                         if (response.status === 400 || response.status === 401) {
-                            errorMessage = "API Authentication Failed. Please check the hardcoded key in the source code.";
+                            errorMessage = "API Key Invalid or Restricted. Please ensure your key is correct and has access to image generation.";
                         }
                         
                         throw new Error(errorMessage);
@@ -418,13 +451,12 @@
 
                 } catch (err) {
                     attempts++;
-                    console.warn(`Attempt ${attempts} failed:`, err.message);
+                    // Do not log retries as errors
                     if (attempts < maxAttempts) {
-                        // Exponential backoff: 1s, 2s
                         const delay = Math.pow(2, attempts) * 1000;
                         await new Promise(resolve => setTimeout(resolve, delay));
                     } else {
-                        throw err; // Re-throw the last error after max attempts
+                        throw err;
                     }
                 }
             }
@@ -438,9 +470,13 @@
                 showMessage('Please upload both the recent (adult) and old (child) photos.');
                 return;
             }
+            if (!GEMINI_API_KEY) {
+                 showMessage('Please enter your API Key to unlock the application.');
+                 return;
+            }
             
             setLoadingState(true);
-            setOutputState('loading'); // Show loading state
+            setOutputState('loading');
 
             try {
                 const adultBase64 = await fileToBase64(adultFile);
@@ -462,21 +498,59 @@
                 setLoadingState(false);
             }
         };
+        
+        /**
+         * Handles the API Key submission and saves it to local storage.
+         */
+        const handleSaveKeyClick = () => {
+            const key = DOMElements.apiKeyInput.value.trim();
+            // Basic key validation (must start with AIza)
+            if (key.length > 20 && key.startsWith('AIza')) { 
+                GEMINI_API_KEY = key;
+                try {
+                    localStorage.setItem('aevoraGeminiApiKey', key);
+                } catch (e) {
+                    console.error("Local Storage is unavailable:", e);
+                }
+                toggleAppVisibility(true);
+                updateUI();
+            } else {
+                showMessage("Invalid API Key format. Please ensure you pasted the full key starting with 'AIza'...");
+                DOMElements.apiKeyInput.value = '';
+            }
+        };
 
         // =================================================================
-        // Initialization (Event Listeners)
+        // Initialization (Event Listeners & Key Loading)
         // =================================================================
 
         window.onload = () => {
-            // Setup file input listeners
+            // 1. Try to load key from local storage
+            const storedKey = localStorage.getItem('aevoraGeminiApiKey');
+            if (storedKey && storedKey.length > 20) {
+                GEMINI_API_KEY = storedKey;
+                toggleAppVisibility(true);
+                DOMElements.apiKeyInput.value = storedKey; // Pre-fill the input
+            } else {
+                toggleAppVisibility(false); // Key setup panel is visible
+            }
+
+            // 2. Setup event listeners
             DOMElements.adultInput.addEventListener('change', (e) => handleFileChange(e, 'adult'));
             DOMElements.childInput.addEventListener('change', (e) => handleFileChange(e, 'child'));
 
-            // Setup button click listeners
             DOMElements.generateButton.addEventListener('click', handleGenerateClick);
             DOMElements.downloadButton.addEventListener('click', downloadImage);
+            DOMElements.saveKeyButton.addEventListener('click', handleSaveKeyClick);
+            
+            // Allow 'Enter' key to submit API key
+            DOMElements.apiKeyInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    handleSaveKeyClick();
+                }
+            });
 
-            // Initial UI setup
+            // 3. Initial UI setup
             setOutputState('initial');
             updateUI();
         };
